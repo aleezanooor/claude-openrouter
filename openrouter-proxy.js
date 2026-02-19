@@ -9,9 +9,11 @@ const https = require("https");
 
 const TARGET_MODEL = process.argv[2] || "openrouter/aurora-alpha";
 const PORT = parseInt(process.argv[3] || "13337", 10);
-const OPENROUTER_KEY =
-  process.env.OPENROUTER_API_KEY ||
-  "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";
+const OPENROUTER_KEY = process.env.OPENROUTER_API_KEY;
+if (!OPENROUTER_KEY) {
+  console.error("[proxy] ERROR: OPENROUTER_API_KEY environment variable is not set.");
+  process.exit(1);
+}
 const OPENROUTER_HOST = "openrouter.ai";
 const OPENROUTER_PATH_PREFIX = "/api"; // Claude Code sends /v1/... but OpenRouter needs /api/v1/...
 
