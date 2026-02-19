@@ -104,6 +104,12 @@ claude-openrouter anthropic/claude-haiku-4-5
 
 ---
 
+## Documentation
+
+For a full technical deep-dive — architecture diagrams, module breakdowns, request lifecycle traces, setup guide, and extension notes — see [TECHNICAL_DESIGN.md](./TECHNICAL_DESIGN.md).
+
+---
+
 ## Notes
 
 - Aurora-alpha identifies itself as a **"stealth-reasoning large language model, not affiliated with any company"** — its real identity when asked directly (bypassing the Claude Code system prompt).
