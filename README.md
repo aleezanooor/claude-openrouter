@@ -89,6 +89,7 @@ When asked "what model are you?", aurora-alpha reads Claude Code's system prompt
 
 ## Usage
 
+### As a standalone session
 ```bat
 REM Interactive session
 claude-aurora
@@ -101,6 +102,24 @@ claude-openrouter openai/gpt-4o
 claude-openrouter stepfun/step-3.5-flash:free
 claude-openrouter anthropic/claude-haiku-4-5
 ```
+
+### As a /aurora sub-agent skill inside Claude Code
+
+Install once:
+```bat
+mkdir %USERPROFILE%\.claude\commands
+copy aurora.md %USERPROFILE%\.claude\commands\aurora.md
+copy aurora-agent.js %USERPROFILE%\aurora-agent.js
+```
+
+Then from any Claude Code session (`claude` or `claude-aurora`):
+```
+/aurora get me the system specs
+/aurora list all TODO comments in this project
+/aurora write a Python script that renames all .jpeg files to .jpg in the current folder
+```
+
+Aurora runs as a fully autonomous sub-agent — it uses Bash, Read, Write, Glob, and Grep tools to complete multi-step tasks, powered by `openrouter/aurora-alpha` for free.
 
 ---
 

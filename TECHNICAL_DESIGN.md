@@ -14,6 +14,7 @@
 7. [Known Constraints & Edge Cases](#7-known-constraints--edge-cases)
 8. [Setup Guide (New Users)](#8-setup-guide-new-users)
 9. [Extending the System](#9-extending-the-system)
+10. [The /aurora Skill — Sub-Agent](#10-the-aurora-skill--sub-agent)
 
 ---
 
@@ -407,6 +408,126 @@ In `openrouter-proxy.js`, add inside the `if (body)` block:
 ```js
 console.log(`[proxy] → ${req.method} ${req.url} body: ${outBody.slice(0, 200)}`);
 ```
+
+---
+
+## 10. The /aurora Skill — Sub-Agent
+
+### Overview
+
+The `/aurora` skill lets you delegate tasks to the aurora-alpha model as an autonomous sub-agent from inside any Claude Code session — without consuming your Claude Pro quota. It mirrors how GitHub Copilot opens a separate panel to run commands independently.
+
+```
+Claude Code session (Sonnet/Opus · Pro)
+    │
+    │  user types: /aurora get me the system specs
+    │
+    ▼
+aurora.md skill expands → instructs Claude to run Bash:
+    node ~/aurora-agent.js "get me the system specs"
+    │
+    ▼
+aurora-agent.js (Node.js, standalone)
+    │  calls OpenRouter API directly (no proxy needed)
+    │  runs autonomous tool-use loop
+    ├── Bash("systeminfo") → parses output
+    ├── Bash("wmic cpu get ...") → CPU details
+    └── returns formatted table
+    │
+    ▼
+Claude Code presents result to user
+```
+
+### Files
+
+| File | Location | Purpose |
+|------|----------|---------|
+| `aurora-agent.js` | `~\aurora-agent.js` | The agent runtime — calls OpenRouter, executes tools |
+| `aurora.md` | `~\.claude\commands\aurora.md` | Skill definition — loaded by Claude Code at startup |
+
+### `aurora-agent.js` — Module Breakdown
+
+**Configuration:**
+```
+TARGET_MODEL  process.argv[2]           default: openrouter/aurora-alpha
+OPENROUTER_KEY process.env.OPENROUTER_API_KEY   required, exits if missing
+MAX_TURNS     10                        max autonomous tool-use iterations
+```
+
+**Tools available to the agent:**
+
+| Tool | Implementation | Description |
+|------|---------------|-------------|
+| `Bash` | `child_process.execSync` | Run any shell command, 30s timeout |
+| `Read` | `fs.readFileSync` | Read file contents |
+| `Write` | `fs.writeFileSync` | Write/create files |
+| `Glob` | PowerShell `Get-ChildItem` | Find files by pattern |
+| `Grep` | `rg` (ripgrep) via shell | Search file contents by regex |
+
+**Agent loop (up to `MAX_TURNS` iterations):**
+```
+1. Build messages array: [{ role: "user", content: PROMPT }]
+2. POST to openrouter.ai/api/v1/messages with tool definitions
+3. Parse response:
+   a. Print any text blocks to stdout
+   b. Collect tool_use blocks
+4. If stop_reason == "end_turn" or no tool calls → done
+5. Execute each tool call locally
+6. Append { role: "assistant", content } and tool results to messages
+7. Go to step 2
+```
+
+**Key difference from the proxy approach:** `aurora-agent.js` calls OpenRouter directly — it does NOT go through `openrouter-proxy.js`. It uses the non-streaming Anthropic messages format (no SSE), which simplifies response parsing and avoids the path-prefix and model-name issues that required the proxy.
+
+### `aurora.md` — Skill Definition
+
+Stored at `~/.claude/commands/aurora.md`. Claude Code reads all files in this directory at startup and registers them as `/command-name` skills (filename without `.md`).
+
+When the user types `/aurora <task>`, Claude Code:
+1. Reads `aurora.md` as the system instruction for this invocation
+2. Extracts `<task>` as the argument
+3. Follows the instructions in the file — which tells it to run `aurora-agent.js` via the Bash tool
+
+The skill file instructs Claude to:
+- Run `node ~/aurora-agent.js "<task>"` via Bash
+- Wait for all output (agent may take multiple turns)
+- Present the final result and summarize any file changes
+
+### Path Resolution Note
+
+The skill file uses `%USERPROFILE%\aurora-agent.js` (Windows syntax). When Claude Code runs this via its Bash tool (which uses Git Bash / MinGW), `%USERPROFILE%` is not expanded. Claude Code auto-corrects this on the fly by retrying with `$USERPROFILE/aurora-agent.js` (Unix syntax). This is standard Claude Code behavior — it recovers from command errors autonomously.
+
+### Verified Behavior (Live Test)
+
+```
+/aurora get me the system specs
+```
+
+Agent execution trace:
+```
+→ Bash("systeminfo")          → OS, RAM, CPU details
+→ Bash("wmic cpu get ...")    → core/thread count, cache
+← Formatted markdown table with all specs
+```
+
+Result was presented correctly with no files modified. Total: 2 tool calls, 1 agent turn.
+
+### Installing for a New User
+
+1. Copy `aurora-agent.js` to your home directory:
+   ```bat
+   copy aurora-agent.js %USERPROFILE%\aurora-agent.js
+   ```
+2. Create the commands directory and install the skill:
+   ```bat
+   mkdir %USERPROFILE%\.claude\commands
+   copy aurora.md %USERPROFILE%\.claude\commands\aurora.md
+   ```
+3. Start a **new** Claude Code session (skills are loaded at startup).
+4. Use from any session:
+   ```
+   /aurora <your task>
+   ```
 
 ### Using on macOS/Linux
 Replace the `.bat` files with equivalent shell scripts (`.sh`). The proxy (`openrouter-proxy.js`) works unchanged on any platform with Node.js. Key differences in the shell script:
